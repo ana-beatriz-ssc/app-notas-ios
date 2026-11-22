@@ -12,30 +12,40 @@ const Help = window.HelpContent;
 // ---------- Banco de dados (IndexedDB) ----------
 const DB_NAME = 'notas-db';
 const STORE = 'notes';
+const FOLDERS = 'folders';
 
 const dbReady = new Promise((resolve, reject) => {
-  const req = indexedDB.open(DB_NAME, 1);
-  req.onupgradeneeded = () => { req.result.createObjectStore(STORE, { keyPath: 'id' }); };
+  const req = indexedDB.open(DB_NAME, 2);
+  req.onupgradeneeded = () => {
+    const db = req.result;
+    if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+    if (!db.objectStoreNames.contains(FOLDERS)) db.createObjectStore(FOLDERS, { keyPath: 'id' });
+  };
   req.onsuccess = () => resolve(req.result);
   req.onerror = () => reject(req.error);
 });
 
-async function dbRun(mode, action) {
+async function dbRun(store, mode, action) {
   const db = await dbReady;
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const req = action(tx.objectStore(STORE));
+    const tx = db.transaction(store, mode);
+    const req = action(tx.objectStore(store));
     tx.oncomplete = () => resolve(req ? req.result : undefined);
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
   });
 }
-const dbAll = () => dbRun('readonly', (s) => s.getAll());
-const dbPut = (note) => dbRun('readwrite', (s) => s.put(note));
-const dbDelete = (id) => dbRun('readwrite', (s) => s.delete(id));
+const dbAll = () => dbRun(STORE, 'readonly', (s) => s.getAll());
+const dbPut = (note) => dbRun(STORE, 'readwrite', (s) => s.put(note));
+const dbDelete = (id) => dbRun(STORE, 'readwrite', (s) => s.delete(id));
+const dbFolders = () => dbRun(FOLDERS, 'readonly', (s) => s.getAll());
+const dbPutFolder = (f) => dbRun(FOLDERS, 'readwrite', (s) => s.put(f));
+const dbDeleteFolder = (id) => dbRun(FOLDERS, 'readwrite', (s) => s.delete(id));
 
 // ---------- Estado ----------
 let notes = [];
+let folders = [];
+let folderId = null; // pasta aberta na lista (null = todas as notas)
 let currentId = null;
 let query = '';
 let saveTimer = null;
@@ -44,13 +54,14 @@ const thumbTimers = new Map();
 const $ = (sel) => document.querySelector(sel);
 const el = {
   list: $('#list'), listEmpty: $('#list-empty'), count: $('#count'), search: $('#search'),
+  listTitle: $('#list-title'), folders: $('#folders'), btnFolder: $('#btn-folder'),
   textView: $('#text-view'), editor: $('#editor'), editorDate: $('#editor-date'),
   inkView: $('#ink-view'), inkHost: $('#ink-host'), inkTitle: $('#ink-title'), inkInfo: $('#ink-info'),
   toolbar: $('#ink-toolbar'), popover: $('#ink-popover'),
   tbColor: $('#tb-color'), tbSize: $('#tb-size'), tbFinger: $('#tb-finger'), tbZoom: $('#tb-zoom'),
   btnNew: $('#btn-new'), btnBack: $('#btn-back'), btnPin: $('#btn-pin'), btnDelete: $('#btn-delete'),
   btnDone: $('#btn-done'), btnMenu: $('#btn-menu'), btnHelp: $('#btn-help'), btnPaper: $('#btn-paper'),
-  btnUndo: $('#btn-undo'), btnRedo: $('#btn-redo'),
+  btnUndo: $('#btn-undo'), btnRedo: $('#btn-redo'), btnSidebar: $('#btn-sidebar'),
   sheetBackdrop: $('#sheet-backdrop'), sheetGroup: $('#sheet-group'), sheetCancel: $('#sheet-cancel'),
   panelBackdrop: $('#panel-backdrop'), panelTitle: $('#panel-title'), panelBody: $('#panel-body'), panelClose: $('#panel-close'),
   onboarding: $('#onboarding'), obSlides: $('#ob-slides'), obDots: $('#ob-dots'), obNext: $('#ob-next'), obSkip: $('#ob-skip'),
@@ -67,6 +78,8 @@ const ICONS = {
   pen: '<svg viewBox="0 0 24 24"><path d="M4 20l1.2-4.6L16.6 4a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8 4 20Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   text: '<svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.2h7a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
 // ---------- Utilidades ----------
@@ -128,6 +141,7 @@ function normalize(n) {
     n.zoom = n.zoom || 1;
   }
   n.pinned = !!n.pinned;
+  n.folder = typeof n.folder === 'string' && n.folder ? n.folder : null;
   return n;
 }
 
@@ -229,15 +243,37 @@ function saveInkPrefs() {
 }
 
 // ---------- Lista ----------
+const folderById = (id) => folders.find((f) => f.id === id) || null;
+// nota aparece na pasta aberta? (pasta apagada = a nota fica só em "Todas")
+const inOpenFolder = (n) => !folderId || n.folder === folderId;
+
 function sortedNotes() {
   return [...notes].sort((a, b) => (b.pinned - a.pinned) || (b.updated - a.updated));
 }
 
+function renderFolders() {
+  const sorted = [...folders].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const chip = (id, label, extra = {}) => h('button', {
+    class: 'folder-chip', role: 'tab', 'aria-selected': String(folderId === id), 'data-folder': id || '', ...extra,
+  }, label);
+  el.folders.replaceChildren(
+    chip(null, 'Todas'),
+    ...sorted.map((f) => {
+      const count = notes.filter((n) => n.folder === f.id && !isEmpty(n)).length;
+      return chip(f.id, h('span', {}, f.name, h('span', { class: 'folder-count' }, String(count))));
+    }),
+    h('button', { class: 'folder-chip add', 'aria-label': 'Nova pasta', html: ICONS.plus + '<span>Pasta</span>', onclick: () => newFolder() }),
+  );
+  const f = folderById(folderId);
+  el.listTitle.textContent = f ? f.name : 'Notas';
+}
+
 function renderList() {
+  renderFolders();
   const q = query.trim();
   const fq = fold(q);
   const matches = (n) => !fq || fold(isInk(n) ? n.title : n.text).includes(fq);
-  const visible = sortedNotes().filter((n) => !isEmpty(n) || n.id === currentId).filter(matches);
+  const visible = sortedNotes().filter((n) => !isEmpty(n) || n.id === currentId).filter(inOpenFolder).filter(matches);
   const pinned = visible.filter((n) => n.pinned);
   const others = visible.filter((n) => !n.pinned);
 
@@ -267,14 +303,16 @@ function renderList() {
 
   el.list.innerHTML = pinned.length ? section('Fixadas', pinned) + section('Notas', others) : section('', others);
 
-  const total = notes.filter((n) => !isEmpty(n)).length;
+  const total = notes.filter((n) => !isEmpty(n) && inOpenFolder(n)).length;
   el.count.textContent = total === 0 ? '' : total === 1 ? '1 nota' : `${total} notas`;
 
   if (visible.length === 0) {
     el.listEmpty.hidden = false;
     el.listEmpty.textContent = q
       ? `Nenhum resultado para “${q}”`
-      : 'Nenhuma nota ainda. Toque no lápis para escrever à mão ou digitar.';
+      : folderId
+        ? 'Esta pasta está vazia. Toque no lápis para criar uma nota aqui.'
+        : 'Nenhuma nota ainda. Toque no lápis para escrever à mão ou digitar.';
   } else {
     el.listEmpty.hidden = true;
   }
@@ -300,6 +338,9 @@ function renderEditor(force) {
     el.editorDate.textContent = '';
     return;
   }
+  const nf = folderById(n.folder);
+  el.btnFolder.setAttribute('aria-label', nf ? `Pasta: ${nf.name} (mover)` : 'Mover para uma pasta');
+  el.btnFolder.classList.toggle('in-folder', !!nf);
   el.btnPin.setAttribute('aria-pressed', String(!!n.pinned));
   el.btnPin.setAttribute('aria-label', n.pinned ? 'Desafixar nota' : 'Fixar nota');
 
@@ -350,16 +391,16 @@ async function closeEditor() {
 }
 
 function selectFirst() {
-  const first = sortedNotes().find((n) => !isEmpty(n));
+  const first = sortedNotes().find((n) => !isEmpty(n) && inOpenFolder(n));
   currentId = first ? first.id : null;
 }
 
 function createNote(kind) {
   const now = Date.now();
   if (kind === 'ink') {
-    return normalize({ id: newId(), kind: 'ink', title: '', pages: [{ layout: T.settings.lastLayout || 'pautada', strokes: [] }], pinned: false, created: now, updated: now });
+    return normalize({ id: newId(), kind: 'ink', title: '', pages: [{ layout: T.settings.lastLayout || 'pautada', strokes: [] }], pinned: false, folder: folderId, created: now, updated: now });
   }
-  return normalize({ id: newId(), kind: 'text', text: '', layout: T.settings.lastTextLayout || 'lisa', zoom: 1, pinned: false, created: now, updated: now });
+  return normalize({ id: newId(), kind: 'text', text: '', layout: T.settings.lastTextLayout || 'lisa', zoom: 1, pinned: false, folder: folderId, created: now, updated: now });
 }
 
 function newNote(kind) {
@@ -442,6 +483,14 @@ async function deleteCurrent() {
   renderEditor();
   renderList();
   toast('Nota apagada');
+}
+
+// ---------- Tela cheia no iPad (esconde a lista) ----------
+function setFocusMode(on, save = true) {
+  document.body.classList.toggle('focus', on);
+  el.btnSidebar.setAttribute('aria-pressed', String(on));
+  el.btnSidebar.setAttribute('aria-label', on ? 'Mostrar a lista' : 'Esconder a lista (tela cheia)');
+  if (save) T.set({ focus: on });
 }
 
 // ---------- Zoom do texto ----------
@@ -663,6 +712,103 @@ function openRename() {
   input.select();
 }
 
+// ---------- Pastas ----------
+function askName(title, value, placeholder, hint, onDone) {
+  const input = h('input', { class: 'rename-input', type: 'text', value, placeholder, maxlength: '60', enterkeyhint: 'done' });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); closePanel(); } });
+  openPanel(title, h('div', {}, input, hint ? h('p', { class: 'hint' }, hint) : null), () => {
+    const v = input.value.trim();
+    if (v) onDone(v);
+  });
+  input.focus();
+  input.select();
+}
+
+async function openFolder(id) {
+  folderId = id;
+  T.set({ folder: id });
+  const n = currentNote();
+  if (wide.matches && (!n || !inOpenFolder(n))) {
+    await flushSave();
+    await discardIfEmpty();
+    selectFirst();
+    renderEditor();
+  }
+  renderList();
+  el.list.parentElement.scrollTop = 0;
+}
+
+function newFolder(noteToMove) {
+  askName('Nova pasta', '', 'Nome da pasta', 'Deixe em branco para cancelar.', async (name) => {
+    const now = Date.now();
+    const f = { id: newId(), name, created: now, updated: now };
+    folders.push(f);
+    await dbPutFolder(f);
+    if (noteToMove) await moveToFolder(noteToMove, f.id);
+    else await openFolder(f.id);
+    toast(`Pasta “${name}” criada`);
+  });
+}
+
+function folderOptions(f) {
+  const count = notes.filter((n) => n.folder === f.id && !isEmpty(n)).length;
+  openSheet({
+    message: `Pasta “${f.name}”`,
+    actions: [
+      { label: 'Renomear Pasta', run: () => askName('Renomear pasta', f.name, 'Nome da pasta', null, async (name) => {
+        f.name = name;
+        f.updated = Date.now();
+        await dbPutFolder(f);
+        renderList();
+        renderEditor();
+      }) },
+      { label: 'Apagar Pasta', danger: true, run: () => openSheet({
+        message: count
+          ? `A pasta será apagada, mas ${count === 1 ? 'a nota dela não será apagada: ela continua' : `as ${count} notas dela não serão apagadas: elas continuam`} em “Todas”.`
+          : 'A pasta está vazia e será apagada.',
+        actions: [{ label: 'Apagar Pasta', danger: true, run: () => deleteFolder(f) }],
+      }) },
+    ],
+  });
+}
+
+async function deleteFolder(f) {
+  folders = folders.filter((x) => x.id !== f.id);
+  await dbDeleteFolder(f.id);
+  for (const n of notes) {
+    if (n.folder !== f.id) continue;
+    n.folder = null;
+    n.updated = Date.now(); // para a mudança valer também ao importar o backup em outro aparelho
+    await persistQuiet(n);
+  }
+  if (folderId === f.id) await openFolder(null);
+  else renderList();
+  renderEditor();
+  toast('Pasta apagada');
+}
+
+async function moveToFolder(n, id) {
+  n.folder = id;
+  n.updated = Date.now();
+  await persistQuiet(n);
+  renderList();
+  renderEditor();
+  const f = folderById(id);
+  toast(f ? `Nota movida para “${f.name}”` : 'Nota tirada da pasta');
+}
+
+function chooseFolder() {
+  const n = currentNote();
+  if (!n) return;
+  const sorted = [...folders].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const actions = sorted.filter((f) => f.id !== n.folder)
+    .map((f) => ({ label: f.name, icon: ICONS.folder, run: () => moveToFolder(n, f.id) }));
+  if (n.folder) actions.push({ label: 'Tirar da pasta', run: () => moveToFolder(n, null) });
+  actions.push({ label: 'Nova Pasta…', icon: ICONS.plus, run: () => newFolder(n) });
+  const cur = folderById(n.folder);
+  openSheet({ message: cur ? `Esta nota está na pasta “${cur.name}”. Mover para:` : 'Mover esta nota para a pasta:', actions });
+}
+
 function openHelp(topicId) {
   const wrap = h('div', { class: 'help' });
   for (const t of Help.HELP) {
@@ -803,6 +949,8 @@ function showOnboarding() {
   obIndex = 0;
   el.onboarding.hidden = false;
   goSlide(0);
+  // conta como visto já ao aparecer: fechar o app no meio não faz o tutorial voltar
+  if (!T.settings.onboarded) T.set({ onboarded: true });
 }
 function goSlide(i) {
   const slides = el.obSlides.children;
@@ -845,7 +993,7 @@ function exportable(n) {
 async function exportNotes() {
   await flushSave();
   const list = notes.filter((n) => !isEmpty(n)).map(exportable);
-  const data = { app: 'notas-pwa', version: 2, exported: new Date().toISOString(), notes: list };
+  const data = { app: 'notas-pwa', version: 3, exported: new Date().toISOString(), folders, notes: list };
   const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
   const name = `notas-backup-${stamp}.json`;
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -879,6 +1027,7 @@ function sanitizeImported(raw) {
   const base = {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     pinned: !!raw.pinned,
+    folder: typeof raw.folder === 'string' && raw.folder ? raw.folder.slice(0, 64) : null,
     created: Number(raw.created) || Date.now(),
     updated: Number(raw.updated) || Date.now(),
   };
@@ -904,6 +1053,14 @@ async function importNotes(file) {
     const data = JSON.parse(await file.text());
     const incoming = Array.isArray(data) ? data : data && data.notes;
     if (!Array.isArray(incoming)) throw new Error('formato');
+    // pastas primeiro (backups antigos não têm pastas)
+    for (const raw of (data && Array.isArray(data.folders) ? data.folders : [])) {
+      if (!raw || typeof raw.id !== 'string' || !raw.id || typeof raw.name !== 'string' || !raw.name.trim()) continue;
+      const f = { id: raw.id.slice(0, 64), name: raw.name.trim().slice(0, 60), created: Number(raw.created) || Date.now(), updated: Number(raw.updated) || Date.now() };
+      const existing = folderById(f.id);
+      if (!existing) { folders.push(f); await dbPutFolder(f); }
+      else if (f.updated > existing.updated) { Object.assign(existing, f); await dbPutFolder(existing); }
+    }
     let added = 0, updated = 0, reopen = false;
     for (const raw of incoming) {
       const note = sanitizeImported(raw);
@@ -952,6 +1109,15 @@ el.btnHelp.addEventListener('click', () => openHelp());
 el.btnPaper.addEventListener('click', openPaperPanel);
 el.btnUndo.addEventListener('click', () => ink.undo());
 el.btnRedo.addEventListener('click', () => ink.redo());
+el.btnFolder.addEventListener('click', chooseFolder);
+el.folders.addEventListener('click', (e) => {
+  const chip = e.target.closest('.folder-chip');
+  if (!chip || chip.classList.contains('add')) return;
+  const id = chip.dataset.folder || null;
+  if (id && id === folderId) folderOptions(folderById(id));
+  else openFolder(id);
+});
+el.btnSidebar.addEventListener('click', () => setFocusMode(!document.body.classList.contains('focus')));
 el.inkTitle.addEventListener('click', openRename);
 el.sheetCancel.addEventListener('click', closeSheet);
 el.sheetBackdrop.addEventListener('click', (e) => { if (e.target === el.sheetBackdrop) closeSheet(); });
@@ -980,7 +1146,8 @@ document.addEventListener('keydown', (e) => {
   }
   if (!mod) return;
   if (k === 'n') { e.preventDefault(); newNote(e.shiftKey ? 'ink' : 'text'); }
-  else if (k === 'f') { e.preventDefault(); el.search.focus(); }
+  else if (k === 'f') { e.preventDefault(); setFocusMode(false); el.search.focus(); }
+  else if (k === '\\' && wide.matches) { e.preventDefault(); setFocusMode(!document.body.classList.contains('focus')); }
   else if (n && isInk(n) && k === 'z' && !typing) { e.preventDefault(); e.shiftKey ? ink.redo() : ink.undo(); }
   else if (n && (k === '=' || k === '+' || k === '-' || k === '0')) {
     e.preventDefault();
@@ -1017,12 +1184,16 @@ window.addEventListener('pagehide', () => { flushSave(); });
 
 // ---------- Início ----------
 async function init() {
+  setFocusMode(!!T.settings.focus, false); // antes de abrir o banco, para a lista não piscar
   try {
     const all = (await dbAll()).map(normalize);
     for (const n of all.filter(isEmpty)) await dbDelete(n.id);
     notes = all.filter((n) => !isEmpty(n));
+    folders = (await dbFolders()).filter((f) => f && typeof f.id === 'string' && typeof f.name === 'string');
+    folderId = folderById(T.settings.folder) ? T.settings.folder : null;
   } catch (e) {
     notes = [];
+    folders = [];
     toast('Não foi possível abrir o armazenamento');
   }
   if (wide.matches) selectFirst();

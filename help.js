@@ -126,6 +126,19 @@
         </ul>`,
     },
     {
+      id: 'folders',
+      title: 'Pastas',
+      html: `
+        <ul>
+          <li><b>Criar:</b> na lista, toque em <b>+ Pasta</b>, ao lado das pastas, embaixo da busca.</li>
+          <li><b>Abrir:</b> toque no nome da pasta. <b>Todas</b> mostra todas as notas.</li>
+          <li><b>Nota nova</b> criada com uma pasta aberta já fica nela.</li>
+          <li><b>Mover:</b> dentro da nota, toque no ícone de pasta no alto da tela.</li>
+          <li><b>Renomear ou apagar:</b> toque de novo na pasta que está aberta. Apagar a pasta não apaga as notas: elas continuam em <b>Todas</b>.</li>
+          <li>O backup leva as pastas junto.</li>
+        </ul>`,
+    },
+    {
       id: 'ink',
       title: 'Escrever à mão',
       html: `
@@ -192,6 +205,7 @@
           <li><kbd>⌘ N</kbd> nova nota digitada</li>
           <li><kbd>⌘ ⇧ N</kbd> nova nota manuscrita</li>
           <li><kbd>⌘ F</kbd> buscar</li>
+          <li><kbd>⌘ \</kbd> esconder ou mostrar a lista (iPad)</li>
           <li><kbd>⌘ Z</kbd> / <kbd>⌘ ⇧ Z</kbd> desfazer / refazer (manuscritas)</li>
           <li><kbd>⌘ +</kbd> <kbd>⌘ −</kbd> <kbd>⌘ 0</kbd> zoom</li>
         </ul>`,
