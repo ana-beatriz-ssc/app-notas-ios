@@ -46,17 +46,17 @@
     {
       art: art.welcome,
       title: 'Boas-vindas ao Notas',
-      text: 'Suas anotações do seu jeito: <b>escritas à mão</b> com caneta ou dedo, ou <b>digitadas</b>. Tudo fica salvo no aparelho e funciona sem internet.',
+      text: 'Numa mesma nota você <b>digita</b>, <b>desenha</b> com a caneta ou o dedo e <b>anexa arquivos</b>. Tudo fica salvo no aparelho e funciona sem internet.',
     },
     {
       art: art.pen,
-      title: 'Escreva à mão',
-      text: 'Toque no <b>lápis</b> e escolha <b>Nota manuscrita</b>. Use caneta, marca-texto e borracha, escolha cores e espessuras. Com o Apple Pencil, a força do traço muda a espessura, e a palma da mão é ignorada.',
+      title: 'Digite, desenhe e anexe',
+      text: 'Toque no <b>lápis</b> para criar uma nota e comece a digitar. Para desenhar ou anexar, toque no <b>⊕</b> no alto e escolha <b>Desenho</b>, <b>Foto</b> ou <b>Arquivo</b>. Ele entra onde está o cursor.',
     },
     {
       art: art.zoom,
-      title: 'Folhas e zoom',
-      text: 'Escolha a folha: lisa, pautada, caderno, quadriculada, pontilhada ou Cornell. <b>Pince com dois dedos</b> para aproximar ou afastar e arraste com dois dedos para mover.',
+      title: 'Desenhos com zoom',
+      text: 'Use caneta, marca-texto e borracha. Com o Apple Pencil, a força muda a espessura e a palma da mão é ignorada. Toque em <b>⤢</b> no canto do desenho para abri-lo em tela cheia e <b>pinçar</b> para dar zoom.',
     },
     {
       art: art.themes,
@@ -117,11 +117,11 @@
       title: 'Criar, fixar, buscar e apagar',
       html: `
         <ul>
-          <li><b>Nova nota:</b> toque no lápis no canto inferior e escolha <i>manuscrita</i> ou <i>digitada</i>.</li>
-          <li><b>Título:</b> nas digitadas, a primeira linha vira o título. Nas manuscritas, toque no título acima da folha para renomear.</li>
-          <li><b>Fixar:</b> o ícone de alfinete deixa a nota no topo da lista.</li>
-          <li><b>Buscar:</b> procura no texto e nos títulos, sem precisar de acentos.</li>
-          <li><b>Apagar:</b> ícone de lixeira. Não dá para desfazer.</li>
+          <li><b>Nova nota:</b> toque no lápis no canto inferior e comece a digitar.</li>
+          <li><b>Título:</b> a primeira linha de texto vira o título.</li>
+          <li><b>Fixar:</b> o alfinete deixa a nota no topo da lista (no iPhone, fica em <b>•••</b>).</li>
+          <li><b>Buscar:</b> procura no texto e no nome dos anexos, sem precisar de acentos.</li>
+          <li><b>Apagar:</b> ícone de lixeira (no iPhone, em <b>•••</b>). Não dá para desfazer.</li>
           <li>Notas deixadas em branco somem sozinhas ao voltar para a lista.</li>
         </ul>`,
     },
@@ -140,39 +140,65 @@
     },
     {
       id: 'ink',
-      title: 'Escrever à mão',
+      title: 'Desenhar e escrever à mão',
       html: `
         <ul>
+          <li><b>Inserir um desenho:</b> toque no <b>⊕</b> no alto → <b>Desenho</b>. O quadro entra onde está o cursor do texto.</li>
           <li><b>Caneta:</b> traço que fica mais grosso quanto mais força você faz com o Apple Pencil.</li>
           <li><b>Marca-texto:</b> traço largo e transparente, para destacar.</li>
           <li><b>Borracha:</b> passe por cima de um traço para apagá-lo inteiro.</li>
           <li><b>Cor e espessura:</b> toque na bolinha colorida e na bolinha de tamanho da barra de ferramentas.</li>
           <li><b>Desfazer / refazer:</b> setas no topo da tela.</li>
+          <li><b>Tamanho do quadro:</b> arraste a alça embaixo dele. Ao escrever perto do fim, ele cresce sozinho.</li>
+          <li><b>Apagar ou mudar o fundo:</b> toque em <b>•••</b> no canto do desenho.</li>
         </ul>
         <h4>Caneta x dedo</h4>
-        <p>No começo, o dedo escreve. Assim que você usa o Apple Pencil, o app passa a usar <b>o dedo para mover a folha</b> e só a caneta escreve, o que evita riscos da palma da mão. Para mudar, use o botão de <b>mão</b> na barra de ferramentas ou <b>•••</b> → <b>Temas e aparência</b>.</p>
-        <p>Com dois dedos você sempre move e dá zoom, mesmo quando o dedo está escrevendo.</p>`,
-    },
-    {
-      id: 'pages',
-      title: 'Folhas e páginas',
-      html: `
-        <ul>
-          <li>Toque no ícone de <b>folha</b> no topo para escolher: lisa, pautada, caderno, quadriculada, pontilhada ou Cornell (manuscritas).</li>
-          <li>Nas manuscritas, a folha muda na página que está na tela. Ative <b>Aplicar a todas as páginas</b> para mudar tudo de uma vez.</li>
-          <li>Para mais páginas, role até o fim e toque em <b>+ Nova página</b>.</li>
-          <li>Nas digitadas, as linhas acompanham o texto conforme você escreve.</li>
-        </ul>`,
+        <p>No começo, o dedo desenha. Assim que você usa o Apple Pencil, <b>o dedo passa a rolar a nota</b> e só a caneta desenha, o que evita riscos da palma da mão. Para mudar, use o botão de <b>mão</b> na barra de ferramentas ou <b>•••</b> → <b>Temas e aparência</b>.</p>`,
     },
     {
       id: 'zoom',
-      title: 'Zoom',
+      title: 'Zoom e desenho em tela cheia',
       html: `
         <ul>
-          <li><b>Pince com dois dedos</b> para aproximar ou afastar. Funciona nas notas manuscritas e nas digitadas (o texto aumenta).</li>
-          <li>Nas manuscritas, toque na <b>porcentagem</b> da barra para ver os botões − e +, ou para voltar ao tamanho da tela.</li>
+          <li>Toque em <b>⤢</b> no canto de um desenho para abri-lo em tela cheia. Lá você <b>pinça com dois dedos</b> para aproximar e arrasta com dois dedos para mover. Toque em <b>Concluído</b> para voltar.</li>
+          <li>No desenho ampliado, a <b>porcentagem</b> na barra mostra os botões − e + e o <b>Ajustar à tela</b>.</li>
+          <li><b>Pince sobre o texto</b> para aumentar ou diminuir as letras.</li>
           <li>Com teclado: <b>⌘ +</b>, <b>⌘ −</b> e <b>⌘ 0</b>. No notebook, também com <b>Ctrl + roda do mouse</b> ou pinça no trackpad.</li>
         </ul>`,
+    },
+    {
+      id: 'pages',
+      title: 'Folha: linhas e fundo',
+      html: `
+        <ul>
+          <li>Toque no ícone de <b>folha</b> no topo (no iPhone, <b>•••</b> → <b>Folha</b>) para escolher as linhas do texto: lisa, pautada, caderno, quadriculada ou pontilhada.</li>
+          <li>Ali também dá para mudar o fundo de todos os desenhos da nota (inclui o modelo Cornell) e o tamanho do texto.</li>
+          <li>Para mudar o fundo de um desenho só, toque em <b>•••</b> no canto dele → <b>Fundo do Desenho</b>.</li>
+        </ul>`,
+    },
+    {
+      id: 'files',
+      title: 'Anexar arquivos e fotos',
+      html: `
+        <ul>
+          <li>Toque no <b>⊕</b> no alto → <b>Foto ou vídeo</b> (da galeria ou da câmera) ou <b>Arquivo</b> (do app Arquivos, iCloud Drive etc.). Dá para escolher vários de uma vez.</li>
+          <li>Qualquer tipo de arquivo serve: PDF, Word, planilha, áudio… até 200 MB cada.</li>
+          <li>Toque no anexo para <b>abrir ou compartilhar</b> (ele abre no app certo do aparelho), renomear ou remover. Fotos também podem ser vistas em tela cheia.</li>
+          <li>No iPad e no computador, também dá para <b>colar</b> uma imagem ou <b>arrastar</b> arquivos para dentro da nota.</li>
+          <li>Os anexos ficam guardados no aparelho e vão junto no backup. Arquivos grandes deixam o backup grande.</li>
+        </ul>`,
+    },
+    {
+      id: 'export',
+      title: 'Exportar uma nota (PDF, imagem, texto)',
+      html: `
+        <p>Dentro da nota, toque no ícone de <b>compartilhar</b> no alto e escolha:</p>
+        <ul>
+          <li><b>PDF:</b> a nota inteira, com texto, desenhos e fotos, em folhas A4. Bom para imprimir ou mandar.</li>
+          <li><b>Imagem (PNG):</b> uma imagem por folha, boa para o WhatsApp.</li>
+          <li><b>Texto (.txt)</b> ou <b>Markdown (.md):</b> só o texto digitado. Desenhos e anexos aparecem como uma indicação.</li>
+        </ul>
+        <p>Isso exporta <b>uma nota</b> para outras pessoas ou apps. Para levar <b>todas</b> as notas para outro aparelho, use o <b>backup</b>.</p>`,
     },
     {
       id: 'themes',
@@ -185,14 +211,14 @@
       id: 'scribble',
       title: 'Escrever à mão e virar texto',
       html: `
-        <p>Se quiser que sua letra vire texto digitado, crie uma <b>Nota digitada</b> e escreva nela com o Apple Pencil. Isso usa o recurso <b>Rabiscar</b> do iPad (Ajustes → Apple Pencil). Para guardar a letra como desenho, use a <b>Nota manuscrita</b>.</p>`,
+        <p>Se você escrever com o Apple Pencil <b>sobre o texto</b> (fora dos desenhos), o iPad transforma sua letra em texto digitado. É o recurso <b>Rabiscar</b> (Ajustes → Apple Pencil). Para guardar a letra como desenho, escreva dentro de um <b>quadro de desenho</b>.</p>`,
     },
     {
       id: 'data',
       title: 'Seus dados e segurança',
       html: `
         <ul>
-          <li>As notas ficam só no aparelho. Não vão para nenhum servidor.</li>
+          <li>As notas e os anexos ficam só no aparelho. Não vão para nenhum servidor.</li>
           <li><b>Atenção:</b> apagar o ícone do app da Tela de Início apaga as notas daquele aparelho. Exporte um backup antes.</li>
           <li>Faça backups de vez em quando (iCloud Drive é um bom lugar).</li>
         </ul>`,
@@ -202,11 +228,11 @@
       title: 'Atalhos de teclado (iPad e notebook)',
       html: `
         <ul class="keys">
-          <li><kbd>⌘ N</kbd> nova nota digitada</li>
-          <li><kbd>⌘ ⇧ N</kbd> nova nota manuscrita</li>
+          <li><kbd>⌘ N</kbd> nova nota</li>
+          <li><kbd>⌘ ⇧ N</kbd> nova nota já com um desenho</li>
           <li><kbd>⌘ F</kbd> buscar</li>
           <li><kbd>⌘ \</kbd> esconder ou mostrar a lista (iPad)</li>
-          <li><kbd>⌘ Z</kbd> / <kbd>⌘ ⇧ Z</kbd> desfazer / refazer (manuscritas)</li>
+          <li><kbd>⌘ Z</kbd> / <kbd>⌘ ⇧ Z</kbd> desfazer / refazer (desenhos, fora do texto)</li>
           <li><kbd>⌘ +</kbd> <kbd>⌘ −</kbd> <kbd>⌘ 0</kbd> zoom</li>
         </ul>`,
     },

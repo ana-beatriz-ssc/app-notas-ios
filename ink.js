@@ -1,15 +1,16 @@
 'use strict';
 /* =========================================================
-   Motor de escrita à mão: páginas, folhas, traços com pressão,
-   borracha, desfazer/refazer, zoom e rolagem.
-   Coordenadas das páginas em "unidades de folha" (820 x 1160 ≈ A4).
+   Motor de escrita à mão.
+   Um "quadro de desenho" tem largura fixa de 820 unidades e altura variável (h).
+   - Funções de desenho (folhas, traços, borracha) usadas pelos quadros dentro da nota
+   - InkEditor: o quadro ampliado em tela cheia, com zoom, pinça e rolagem
    ========================================================= */
 (function () {
   const PAGE_W = 820;
-  const PAGE_H = 1160;
-  const GAP = 28;
-  const ADD_H = 120; // espaço do botão "Nova página" abaixo da última folha
-  const STEP = PAGE_H + GAP;
+  const PAGE_H = 1160; // altura de uma folha antiga (≈ A4)
+  const MIN_H = 120;
+  const MAX_H = 6000;
+  const ADD_H = 120; // espaço do botão "+ Mais espaço" abaixo do quadro ampliado
 
   const LAYOUTS = [
     { id: 'lisa', name: 'Lisa' },
@@ -27,7 +28,7 @@
   };
 
   // ---------- Desenho dos layouts ----------
-  function drawLayout(ctx, layout, colors, scale) {
+  function drawLayout(ctx, layout, colors, scale, H = PAGE_H) {
     const lw = Math.max(1, 0.9 / scale);
     const hLines = (from, to, gap, x0 = 0, x1 = PAGE_W) => {
       ctx.beginPath();
@@ -41,22 +42,22 @@
     ctx.strokeStyle = colors.line;
     switch (layout) {
       case 'pautada':
-        hLines(108, PAGE_H - 40, 36);
+        hLines(36, H - 20, 36);
         break;
       case 'caderno':
-        hLines(108, PAGE_H - 40, 36);
+        hLines(36, H - 20, 36);
         ctx.strokeStyle = colors.margin;
         ctx.lineWidth = lw * 1.4;
         ctx.beginPath();
-        ctx.moveTo(96, 0); ctx.lineTo(96, PAGE_H);
+        ctx.moveTo(96, 0); ctx.lineTo(96, H);
         ctx.stroke();
         break;
       case 'quadriculada': {
         const g = 28;
         ctx.globalAlpha = 0.75;
         ctx.beginPath();
-        for (let x = g; x < PAGE_W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, PAGE_H); }
-        for (let y = g; y < PAGE_H; y += g) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y); }
+        for (let x = g; x < PAGE_W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+        for (let y = g; y < H; y += g) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y); }
         ctx.stroke();
         ctx.globalAlpha = 1;
         break;
@@ -67,7 +68,7 @@
         ctx.fillStyle = colors.margin;
         ctx.globalAlpha = 0.55;
         ctx.beginPath();
-        for (let y = g; y < PAGE_H; y += g) {
+        for (let y = g; y < H; y += g) {
           for (let x = g; x < PAGE_W; x += g) {
             ctx.moveTo(x + r, y);
             ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -78,14 +79,14 @@
         break;
       }
       case 'cornell': {
-        const top = 118, bottom = PAGE_H - 250, col = 240;
+        const top = Math.min(118, H * 0.2), bottom = Math.max(top + 72, H - 250), col = 240;
         hLines(top + 36, bottom - 10, 36, col, PAGE_W);
         ctx.strokeStyle = colors.margin;
         ctx.lineWidth = lw * 1.6;
         ctx.beginPath();
         ctx.moveTo(0, top); ctx.lineTo(PAGE_W, top);
-        ctx.moveTo(0, bottom); ctx.lineTo(PAGE_W, bottom);
-        ctx.moveTo(col, top); ctx.lineTo(col, bottom);
+        if (bottom < H) { ctx.moveTo(0, bottom); ctx.lineTo(PAGE_W, bottom); }
+        ctx.moveTo(col, top); ctx.lineTo(col, Math.min(bottom, H));
         ctx.stroke();
         break;
       }
@@ -224,28 +225,54 @@
     return false;
   }
 
-  function drawPage(ctx, page, colors, scale) {
+  // ponto mais baixo desenhado (para não encolher o quadro por cima do desenho)
+  function contentBottom(block) {
+    let max = 0;
+    for (const s of block.strokes) max = Math.max(max, geomOf(s).bbox[3]);
+    return max;
+  }
+
+  // apaga, no ponto (x, y), os traços tocados; devolve os itens removidos
+  function eraseAt(block, x, y, r) {
+    const removed = [];
+    const strokes = block.strokes;
+    for (let i = strokes.length - 1; i >= 0; i--) {
+      if (hitStroke(strokes[i], x, y, r)) {
+        const [s] = strokes.splice(i, 1);
+        removed.push({ index: i, stroke: s });
+      }
+    }
+    return removed;
+  }
+
+  function blockH(block) { return block.h || PAGE_H; }
+
+  // desenha o quadro inteiro (fundo, folha e traços), em coordenadas de quadro
+  function drawBlock(ctx, block, colors, scale) {
+    const H = blockH(block);
     ctx.fillStyle = colors.paper;
-    ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+    ctx.fillRect(0, 0, PAGE_W, H);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, PAGE_W, PAGE_H);
+    ctx.rect(0, 0, PAGE_W, H);
     ctx.clip();
-    drawLayout(ctx, page.layout, colors, scale);
-    for (const s of page.strokes) drawStroke(ctx, s, false);
+    drawLayout(ctx, block.layout, colors, scale, H);
+    for (const s of block.strokes) drawStroke(ctx, s, false);
     ctx.restore();
   }
 
-  // Miniatura da primeira página (para a lista)
-  function renderThumb(note, colors, width = 120) {
+  // Miniatura (para a lista): o topo do quadro, no formato de uma folha
+  function renderThumb(block, colors, width = 120) {
     const c = document.createElement('canvas');
     const k = 2;
     c.width = width * k;
     c.height = Math.round(width * (PAGE_H / PAGE_W)) * k;
     const ctx = c.getContext('2d');
+    ctx.fillStyle = colors.paper;
+    ctx.fillRect(0, 0, c.width, c.height);
     const s = (width * k) / PAGE_W;
     ctx.setTransform(s, 0, 0, s, 0, 0);
-    drawPage(ctx, note.pages[0], colors, s / k);
+    drawBlock(ctx, { ...block, h: Math.min(blockH(block), PAGE_H) }, colors, s / k);
     return c.toDataURL('image/jpeg', 0.8);
   }
 
@@ -259,21 +286,22 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
     ctx.setTransform(s, 0, 0, s, 0, 0);
-    drawPage(ctx, { layout, strokes: [] }, colors, s);
+    drawBlock(ctx, { layout, strokes: [], h: PAGE_H }, colors, s);
   }
 
   // =========================================================
+  // Quadro ampliado: zoom, pinça, rolagem e borracha
   class InkEditor {
     constructor(host, opts) {
       this.host = host;
       this.opts = opts;
       this.canvas = document.createElement('canvas');
       this.canvas.className = 'ink-canvas';
-      this.canvas.setAttribute('aria-label', 'Folha para escrever à mão');
+      this.canvas.setAttribute('aria-label', 'Quadro de desenho ampliado');
       host.appendChild(this.canvas);
       this.ctx = this.canvas.getContext('2d');
 
-      this.note = null;
+      this.block = null;
       this.scale = 1; this.fit = 1; this.tx = 0; this.ty = 0;
       this.vw = 0; this.vh = 0; this.dpr = 1;
       this.tool = 'pen';
@@ -308,9 +336,9 @@
     }
 
     // ---------- abrir / fechar ----------
-    open(note) {
+    open(block) {
       cancelAnimationFrame(this.inertia);
-      this.note = note;
+      this.block = block;
       this.undoStack = [];
       this.redoStack = [];
       this.drawing = null;
@@ -321,7 +349,8 @@
     }
 
     close() {
-      this.note = null;
+      cancelAnimationFrame(this.inertia);
+      this.block = null;
       this.drawing = null;
       this.pointers.clear();
     }
@@ -338,7 +367,7 @@
       this.canvas.height = Math.round(h * dpr);
       const pad = w < 600 ? 10 : 32;
       this.fit = Math.min((w - pad * 2) / PAGE_W, 1.35);
-      if (reset || !this.note) {
+      if (reset || !this.block) {
         this.scale = this.fit;
         this.ty = 14;
       } else {
@@ -350,10 +379,7 @@
       this.viewChanged();
     }
 
-    docHeight() {
-      const n = this.note ? this.note.pages.length : 1;
-      return n * PAGE_H + (n - 1) * GAP + ADD_H;
-    }
+    docHeight() { return (this.block ? blockH(this.block) : PAGE_H) + ADD_H; }
 
     clamp() {
       const cw = PAGE_W * this.scale;
@@ -361,7 +387,7 @@
       const padX = 10, padTop = 14;
       if (cw + padX * 2 <= this.vw) this.tx = (this.vw - cw) / 2;
       else this.tx = Math.min(padX, Math.max(this.vw - cw - padX, this.tx));
-      // deixa rolar até o botão "Nova página" ficar acima da barra de ferramentas
+      // deixa rolar até o botão "+ Mais espaço" ficar acima da barra de ferramentas
       const extra = Math.max(20, this.bottomPad - 0.58 * ADD_H * this.scale);
       const minTy = Math.min(padTop, this.vh - ch - extra);
       this.ty = Math.min(padTop, Math.max(minTy, this.ty));
@@ -383,23 +409,8 @@
     zoomBy(f) { this.setScale(this.scale * f); }
     zoomFit() { this.setScale(this.fit, this.vw / 2, 0); this.clamp(); this.requestRender(); this.viewChanged(); }
 
-    currentPage() {
-      if (!this.note) return 0;
-      const y = (this.vh * 0.4 - this.ty) / this.scale;
-      return Math.max(0, Math.min(this.note.pages.length - 1, Math.floor(y / STEP)));
-    }
-
-    scrollToPage(i) {
-      this.ty = 14 - i * STEP * this.scale;
-      this.clamp();
-      this.requestRender();
-      this.viewChanged();
-    }
-
     viewChanged() {
-      if (this.opts.onView && this.note) {
-        this.opts.onView({ zoom: this.zoomPercent(), page: this.currentPage() + 1, pages: this.note.pages.length });
-      }
+      if (this.opts.onView && this.block) this.opts.onView({ zoom: this.zoomPercent() });
     }
 
     toDoc(clientX, clientY) {
@@ -407,10 +418,7 @@
       const sx = clientX - r.left, sy = clientY - r.top;
       const x = (sx - this.tx) / this.scale;
       const y = (sy - this.ty) / this.scale;
-      const page = Math.floor(y / STEP);
-      const py = y - page * STEP;
-      const n = this.note.pages.length;
-      return { sx, sy, x, y: py, page, inPage: page >= 0 && page < n && x >= 0 && x <= PAGE_W && py >= 0 && py <= PAGE_H };
+      return { sx, sy, x, y, inPage: x >= 0 && x <= PAGE_W && y >= 0 && y <= blockH(this.block) };
     }
 
     // ---------- desenho na tela ----------
@@ -425,36 +433,30 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = colors.canvas;
       ctx.fillRect(0, 0, this.vw, this.vh);
-      if (!this.note) return;
-      const pages = this.note.pages;
+      if (!this.block) return;
       const s = this.scale;
-      const first = Math.max(0, Math.floor((-this.ty / s) / STEP));
-      const last = Math.min(pages.length - 1, Math.floor(((this.vh - this.ty) / s) / STEP));
-      for (let i = first; i <= last; i++) {
-        const top = this.ty + i * STEP * s;
-        // sombra da folha
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.fillStyle = 'rgba(0,0,0,0.08)';
-        ctx.fillRect(this.tx - 0.5, top + 1.5, PAGE_W * s + 1, PAGE_H * s + 1);
-        ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * this.tx, dpr * top);
-        drawPage(ctx, pages[i], colors, s);
-        if (this.drawing && this.drawing.stroke && this.drawing.page === i) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(0, 0, PAGE_W, PAGE_H);
-          ctx.clip();
-          drawStroke(ctx, this.drawing.stroke, true);
-          ctx.restore();
-        }
+      const H = blockH(this.block);
+      // sombra da folha
+      ctx.fillStyle = 'rgba(0,0,0,0.08)';
+      ctx.fillRect(this.tx - 0.5, this.ty + 1.5, PAGE_W * s + 1, H * s + 1);
+      ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * this.tx, dpr * this.ty);
+      drawBlock(ctx, this.block, colors, s);
+      if (this.drawing && this.drawing.stroke) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, PAGE_W, H);
+        ctx.clip();
+        drawStroke(ctx, this.drawing.stroke, true);
+        ctx.restore();
       }
 
-      // botão "Nova página"
+      // botão "+ Mais espaço"
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const cx = this.tx + (PAGE_W * s) / 2;
-      const cy = this.ty + (pages.length * STEP - GAP + ADD_H * 0.42) * s;
+      const cy = this.ty + (H + ADD_H * 0.42) * s;
       const bw = 168, bh = 40;
       this.addBtn = { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
-      if (cy > -bh && cy < this.vh + bh) {
+      if (H < MAX_H && cy > -bh && cy < this.vh + bh) {
         ctx.fillStyle = colors.paper;
         ctx.strokeStyle = colors.margin;
         ctx.lineWidth = 1;
@@ -466,7 +468,7 @@
         ctx.font = '600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('+  Nova página', cx, cy + 1);
+        ctx.fillText('+  Mais espaço', cx, cy + 1);
       }
 
       // círculo da borracha
@@ -489,7 +491,7 @@
 
     // ---------- ponteiros ----------
     onDown(e) {
-      if (!this.note) return;
+      if (!this.block) return;
       e.preventDefault();
       cancelAnimationFrame(this.inertia);
       const type = e.pointerType;
@@ -540,12 +542,12 @@
       if (e.pointerType === 'pen') this.tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
       if (!pos.inPage) return;
       if (this.tool === 'eraser') {
-        this.drawing = { type: 'erase', page: pos.page, pointerId: e.pointerId, pointerType: e.pointerType, removed: [], cursor: pos, last: { x: pos.x, y: pos.y } };
-        this.eraseAt(pos.page, pos.x, pos.y);
+        this.drawing = { type: 'erase', pointerId: e.pointerId, pointerType: e.pointerType, removed: [], cursor: pos, last: { x: pos.x, y: pos.y } };
+        this.eraseAt(pos.x, pos.y);
       } else {
         const pressure = e.pointerType === 'pen' ? (e.pressure || 0.5) : 0.5;
         const stroke = { t: this.tool === 'hl' ? 'hl' : 'pen', c: this.currentColor(), w: SIZES[this.tool][this.sizeIndex[this.tool]], p: [] };
-        this.drawing = { type: 'stroke', page: pos.page, pointerId: e.pointerId, pointerType: e.pointerType, stroke, moved: 0 };
+        this.drawing = { type: 'stroke', pointerId: e.pointerId, pointerType: e.pointerType, stroke };
         this.addPoint(pos.x, pos.y, pressure);
       }
       this.requestRender();
@@ -554,32 +556,21 @@
     addPoint(x, y, pressure) {
       const p = this.drawing.stroke.p;
       const n = p.length;
-      if (n >= 3) {
-        const d = Math.hypot(x - p[n - 3], y - p[n - 2]);
-        if (d < 0.7 / Math.max(this.scale, 0.5)) return;
-        this.drawing.moved += d;
-      }
-      p.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(Math.max(0.05, Math.min(1, pressure)) * 100) / 100);
+      if (n >= 3 && Math.hypot(x - p[n - 3], y - p[n - 2]) < 0.7 / Math.max(this.scale, 0.5)) return;
+      const H = blockH(this.block);
+      p.push(Math.round(Math.max(0, Math.min(PAGE_W, x)) * 10) / 10, Math.round(Math.max(0, Math.min(H, y)) * 10) / 10,
+        Math.round(Math.max(0.05, Math.min(1, pressure)) * 100) / 100);
     }
 
-    eraseAt(page, x, y) {
-      const r = SIZES.eraser[this.sizeIndex.eraser];
-      const strokes = this.note.pages[page].strokes;
-      for (let i = strokes.length - 1; i >= 0; i--) {
-        if (hitStroke(strokes[i], x, y, r)) {
-          const [s] = strokes.splice(i, 1);
-          this.drawing.removed.push({ page, index: i, stroke: s });
-        }
-      }
+    eraseAt(x, y) {
+      const removed = eraseAt(this.block, x, y, SIZES.eraser[this.sizeIndex.eraser]);
+      this.drawing.removed.push(...removed);
     }
 
     cancelDrawing() {
       if (this.drawing && this.drawing.type === 'erase') {
-        // devolve o que foi apagado
         const items = this.drawing.removed;
-        for (let i = items.length - 1; i >= 0; i--) {
-          this.note.pages[items[i].page].strokes.splice(items[i].index, 0, items[i].stroke);
-        }
+        for (let i = items.length - 1; i >= 0; i--) this.block.strokes.splice(items[i].index, 0, items[i].stroke);
       }
       this.drawing = null;
       this.requestRender();
@@ -603,7 +594,7 @@
     }
 
     onMove(e) {
-      if (!this.note) return;
+      if (!this.block) return;
       const d = this.drawing;
       const prev = this.pointers.get(e.pointerId);
       if (prev) this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -611,20 +602,19 @@
         const list = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
         for (const ev of list) {
           const pos = this.toDoc(ev.clientX, ev.clientY);
-          const y = pos.y + (pos.page - d.page) * STEP; // mantém o traço na página onde começou
           if (d.type === 'erase') {
             d.cursor = pos;
             // apaga ao longo do caminho todo, mesmo com movimento rápido
-            const last = d.last || { x: pos.x, y };
+            const last = d.last;
             const r = SIZES.eraser[this.sizeIndex.eraser];
-            const steps = Math.max(1, Math.ceil(Math.hypot(pos.x - last.x, y - last.y) / (r / 2)));
+            const steps = Math.max(1, Math.ceil(Math.hypot(pos.x - last.x, pos.y - last.y) / (r / 2)));
             for (let k = 1; k <= steps; k++) {
-              this.eraseAt(d.page, last.x + ((pos.x - last.x) * k) / steps, last.y + ((y - last.y) * k) / steps);
+              this.eraseAt(last.x + ((pos.x - last.x) * k) / steps, last.y + ((pos.y - last.y) * k) / steps);
             }
-            d.last = { x: pos.x, y };
+            d.last = { x: pos.x, y: pos.y };
           } else {
             const pressure = ev.pointerType === 'pen' ? (ev.pressure || 0.5) : 0.5;
-            this.addPoint(pos.x, y, pressure);
+            this.addPoint(pos.x, pos.y, pressure);
           }
         }
         this.requestRender();
@@ -663,14 +653,14 @@
     }
 
     onUp(e, cancelled) {
-      if (!this.note) return;
+      if (!this.block) return;
       const d = this.drawing;
       if (d && e.pointerId === d.pointerId) {
         if (cancelled) {
           this.cancelDrawing();
         } else if (d.type === 'stroke' && d.stroke.p.length) {
-          this.note.pages[d.page].strokes.push(d.stroke);
-          this.pushHistory({ type: 'add', page: d.page, stroke: d.stroke });
+          this.block.strokes.push(d.stroke);
+          this.pushHistory({ type: 'add', stroke: d.stroke });
           this.drawing = null;
           this.changed();
         } else if (d.type === 'erase') {
@@ -688,12 +678,12 @@
         this.penTimer = setTimeout(() => { this.penActive = false; }, 300);
       }
 
-      // toque rápido no botão "Nova página"
+      // toque rápido no botão "+ Mais espaço"
       if (this.tap && this.tap.id === e.pointerId && !cancelled) {
         const r = this.canvas.getBoundingClientRect();
         const sx = e.clientX - r.left, sy = e.clientY - r.top, b = this.addBtn;
         if (performance.now() - this.tap.t < 600 && b && sx >= b.x && sx <= b.x + b.w && sy >= b.y && sy <= b.y + b.h) {
-          this.addPage();
+          this.grow(600);
         }
         this.tap = null;
       }
@@ -734,7 +724,7 @@
     }
 
     onWheel(e) {
-      if (!this.note) return;
+      if (!this.block) return;
       e.preventDefault();
       cancelAnimationFrame(this.inertia);
       const r = this.canvas.getBoundingClientRect();
@@ -749,27 +739,22 @@
       }
     }
 
-    // ---------- páginas e folhas ----------
-    addPage() {
-      const pages = this.note.pages;
-      const page = { layout: pages[pages.length - 1].layout, strokes: [] };
-      pages.push(page);
-      this.pushHistory({ type: 'addPage', index: pages.length - 1, page });
+    // ---------- tamanho e folha ----------
+    grow(by) {
+      const before = blockH(this.block);
+      const after = Math.min(MAX_H, before + by);
+      if (after === before) return;
+      this.block.h = after;
+      this.pushHistory({ type: 'height', before, after });
       this.changed();
-      this.scrollToPage(pages.length - 1);
     }
 
-    setLayout(layout, all) {
-      const changes = [];
-      const idx = all ? this.note.pages.map((_, i) => i) : [this.currentPage()];
-      for (const i of idx) {
-        const p = this.note.pages[i];
-        if (p.layout !== layout) { changes.push({ page: i, before: p.layout, after: layout }); p.layout = layout; }
-      }
-      if (changes.length) {
-        this.pushHistory({ type: 'layout', changes });
-        this.changed();
-      }
+    setLayout(layout) {
+      const before = this.block.layout;
+      if (before === layout) return;
+      this.block.layout = layout;
+      this.pushHistory({ type: 'layout', before, after: layout });
+      this.changed();
     }
 
     // ---------- desfazer / refazer ----------
@@ -784,45 +769,10 @@
       if (this.opts.onHistory) this.opts.onHistory(this.undoStack.length > 0, this.redoStack.length > 0);
     }
 
-    applyOp(op, undo) {
-      const pages = this.note.pages;
-      switch (op.type) {
-        case 'add': {
-          const arr = pages[op.page].strokes;
-          if (undo) { const i = arr.lastIndexOf(op.stroke); if (i >= 0) arr.splice(i, 1); }
-          else arr.push(op.stroke);
-          break;
-        }
-        case 'remove':
-          if (undo) {
-            for (let i = op.items.length - 1; i >= 0; i--) {
-              const it = op.items[i];
-              pages[it.page].strokes.splice(it.index, 0, it.stroke);
-            }
-          } else {
-            for (const it of op.items) {
-              const arr = pages[it.page].strokes;
-              const i = arr.indexOf(it.stroke);
-              if (i >= 0) arr.splice(i, 1);
-            }
-          }
-          break;
-        case 'addPage':
-          if (undo) pages.splice(op.index, 1);
-          else pages.splice(op.index, 0, op.page);
-          break;
-        case 'layout':
-          for (const c of op.changes) if (pages[c.page]) pages[c.page].layout = undo ? c.before : c.after;
-          break;
-        default:
-          break;
-      }
-    }
-
     undo() {
       const op = this.undoStack.pop();
       if (!op) return;
-      this.applyOp(op, true);
+      applyOp(this.block, op, true);
       this.redoStack.push(op);
       this.history();
       this.clamp();
@@ -832,7 +782,7 @@
     redo() {
       const op = this.redoStack.pop();
       if (!op) return;
-      this.applyOp(op, false);
+      applyOp(this.block, op, false);
       this.undoStack.push(op);
       this.history();
       this.clamp();
@@ -840,11 +790,42 @@
     }
 
     changed() {
+      this.clamp();
       this.requestRender();
       this.viewChanged();
       if (this.opts.onChange) this.opts.onChange();
     }
   }
 
-  window.Ink = { InkEditor, LAYOUTS, SIZES, PAGE_W, PAGE_H, renderThumb, renderLayoutPreview };
+  // desfaz/refaz uma operação num quadro
+  function applyOp(block, op, undo) {
+    const arr = block.strokes;
+    switch (op.type) {
+      case 'add':
+        if (undo) { const i = arr.lastIndexOf(op.stroke); if (i >= 0) arr.splice(i, 1); }
+        else arr.push(op.stroke);
+        break;
+      case 'remove':
+        if (undo) {
+          for (let i = op.items.length - 1; i >= 0; i--) arr.splice(op.items[i].index, 0, op.items[i].stroke);
+        } else {
+          for (const it of op.items) { const i = arr.indexOf(it.stroke); if (i >= 0) arr.splice(i, 1); }
+        }
+        break;
+      case 'height':
+        block.h = undo ? op.before : op.after;
+        break;
+      case 'layout':
+        block.layout = undo ? op.before : op.after;
+        break;
+      default:
+        break;
+    }
+  }
+
+  window.Ink = {
+    InkEditor, LAYOUTS, SIZES, PAGE_W, PAGE_H, MIN_H, MAX_H,
+    drawBlock, drawStroke, drawLayout, eraseAt, contentBottom, applyOp, blockH,
+    renderThumb, renderLayoutPreview,
+  };
 })();
