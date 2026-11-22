@@ -7,6 +7,8 @@ App de notas para iPhone e iPad, com escrita à mão e texto digitado. É um PWA
 ## Recursos
 - **Escrita à mão** com Apple Pencil ou dedo: pressão, marca-texto, borracha, desfazer/refazer, várias páginas e rejeição da palma
 - **Notas digitadas**, com a primeira linha como título
+- **Pastas** para organizar as notas
+- **Tela cheia no iPad**, escondendo a lista de notas
 - **Folhas**: lisa, pautada, caderno, quadriculada, pontilhada e Cornell
 - **Zoom** por pinça, botões ou atalhos de teclado
 - **9 temas** com modo claro, escuro ou automático
