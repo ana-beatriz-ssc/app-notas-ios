@@ -254,6 +254,21 @@ body.no-note .note-only, body.no-note .ink-only { visibility: hidden; }
   touch-action: none; background: rgba(0, 0, 0, 0.03); border-top: 0.5px solid rgba(0, 0, 0, 0.08);
 }
 .ink-resize span { width: 40px; height: 5px; border-radius: 3px; background: rgba(0, 0, 0, 0.22); }
+/* folha escura: alça e botões do desenho em tons escuros */
+[data-paper="dark"] .ink-resize { background: rgba(255, 255, 255, 0.05); border-top-color: rgba(255, 255, 255, 0.1); }
+[data-paper="dark"] .ink-resize span { background: rgba(255, 255, 255, 0.32); }
+[data-paper="dark"] .ink-act { background: rgba(58, 58, 62, 0.9); color: #f2f2f7; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
+
+/* escolha da cor da folha e das linhas */
+.paper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; }
+.paper-opt { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text); padding: 4px 0; }
+.paper-sw {
+  width: 56px; height: 44px; border-radius: 9px; display: block;
+  box-shadow: 0 0 0 0.5px var(--sep), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.paper-sw.auto { background: linear-gradient(135deg, #fbf3f6 0 50%, #2a2326 50% 100%); }
+.paper-opt[aria-pressed="true"] .paper-sw { box-shadow: 0 0 0 2.5px var(--accent), 0 0 0 5px var(--card); }
+.paper-opt[aria-pressed="true"] span:last-child { color: var(--accent); font-weight: 600; }
 
 /* anexo */
 .blk-file { margin: 6px calc(var(--safe-right) + var(--bm)) 6px calc(var(--safe-left) + var(--bm)); }

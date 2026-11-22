@@ -1,6 +1,6 @@
 /* Service worker: guarda o app no aparelho para funcionar sem internet.
    Ao publicar uma nova versão, aumente o número em VERSION. */
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `notas-${VERSION}`;
 const ASSETS = [
   './',

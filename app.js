@@ -732,7 +732,7 @@ function setBlockLayout(b, layout) {
 }
 
 function openBlockLayout(b) {
-  openPanel('Fundo do desenho', h('div', {}, section(null, layoutGrid(Ink.LAYOUTS, b.layout, (id) => setBlockLayout(b, id)))));
+  openPanel('Fundo do desenho', h('div', {}, section(null, layoutGrid(Ink.LAYOUTS, b.layout, (id) => setBlockLayout(b, id))), paperPickers()));
 }
 
 // ---------- Zoom do texto ----------
@@ -860,6 +860,42 @@ function themeGrid() {
   return grid;
 }
 
+// cor da folha dos desenhos e das linhas (vale para todas as notas)
+function paperPickers() {
+  const wrap = h('div', { class: 'paper-pickers' });
+  const swatch = (c, auto) => h('span', {
+    class: 'paper-sw' + (auto ? ' auto' : ''),
+    style: auto ? '' : `background-color:${c.paper};background-image:repeating-linear-gradient(to bottom, transparent 0 9px, ${c.line} 9px 10.5px)`,
+  });
+  const build = () => {
+    const mode = T.resolvedMode();
+    const theme = T.settings.theme;
+    const papers = h('div', { class: 'paper-grid' });
+    for (const p of T.PAPERS) {
+      const c = T.inkColors(theme, mode, p.id, T.settings.lines);
+      const b = h('button', { class: 'paper-opt', 'aria-pressed': String(T.settings.paper === p.id), 'aria-label': `Folha ${p.name}` },
+        swatch(c, p.id === 'auto'), h('span', {}, p.name));
+      b.addEventListener('click', () => { T.set({ paper: p.id }); build(); });
+      papers.append(b);
+    }
+    const lines = h('div', { class: 'paper-grid' });
+    for (const l of T.LINES) {
+      const c = T.inkColors(theme, mode, T.settings.paper, l.id);
+      const b = h('button', { class: 'paper-opt', 'aria-pressed': String(T.settings.lines === l.id), 'aria-label': `Linhas ${l.name}` },
+        swatch(c, false), h('span', {}, l.name));
+      b.addEventListener('click', () => { T.set({ lines: l.id }); build(); });
+      lines.append(b);
+    }
+    wrap.replaceChildren(
+      section('Cor da folha dos desenhos', papers,
+        h('p', { class: 'hint' }, 'Automático: clara no modo claro e escura no modo escuro. Na folha escura, a caneta preta aparece branca.')),
+      section('Cor das linhas', lines, h('p', { class: 'hint' }, 'Vale para os desenhos e para as linhas atrás do texto.')),
+    );
+  };
+  build();
+  return wrap;
+}
+
 function setFingerMode(v) {
   T.set({ fingerMode: v });
   updateToolbar();
@@ -881,6 +917,7 @@ function openSettings() {
       T.set({ appearance: v });
       openSettings(); // redesenha as bolinhas com as cores do modo
     })),
+    paperPickers(),
     section('Desenho: o que o dedo faz',
       segmented([['auto', 'Automático'], ['draw', 'Desenha'], ['pan', 'Rola a nota']], T.settings.fingerMode, (v) => {
         setFingerMode(v);
@@ -897,7 +934,7 @@ function openPaperPanel() {
   if (!n) return;
   if (fullBlock) { // no desenho ampliado, muda só o fundo dele
     const b = fullBlock;
-    openPanel('Fundo do desenho', h('div', {}, section(null, layoutGrid(Ink.LAYOUTS, b.layout, (id) => { ink.setLayout(id); T.set({ lastLayout: id }); }))));
+    openPanel('Fundo do desenho', h('div', {}, section(null, layoutGrid(Ink.LAYOUTS, b.layout, (id) => { ink.setLayout(id); T.set({ lastLayout: id }); })), paperPickers()));
     return;
   }
   const parts = [section('Linhas do texto', layoutGrid(TEXT_LAYOUTS, n.layout, (id) => {
@@ -913,6 +950,7 @@ function openPaperPanel() {
       layoutGrid(Ink.LAYOUTS, inks.every((b) => b.layout === cur) ? cur : null, (id) => inks.forEach((b) => setBlockLayout(b, id))),
       h('p', { class: 'hint' }, 'Para mudar só um desenho, toque em ••• no canto dele.')));
   }
+  parts.push(paperPickers());
   const out = h('output', { 'data-textzoom': '' }, Math.round((n.zoom || 1) * 100) + '%');
   parts.push(section('Tamanho do texto',
     h('div', { class: 'stepper' },
@@ -1029,7 +1067,7 @@ async function exportCurrent(format) {
   try {
     const files = await Exporter.exportNote(n, format, {
       title: noteTitle(n),
-      colors: T.palette(T.settings.theme, 'light'),
+      colors: T.colors, // mesma folha e linhas que aparecem na tela
       getBlob: async (id) => { const r = await dbGetFile(id).catch(() => null); return r && r.blob; },
     });
     el.toast.classList.remove('show');
@@ -1093,15 +1131,18 @@ function openMenu() {
 }
 
 // ---------- Barra de ferramentas do desenho ----------
+// cor como aparece na folha (o preto aparece branco na folha escura)
+const shownColor = (c) => (ink.tool === 'hl' ? c : Ink.inkColor(c, T.colors.paperDark));
+
 function updateToolbar() {
   el.toolbar.querySelectorAll('.tool').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === ink.tool)));
   const eraser = ink.tool === 'eraser';
   el.tbColor.disabled = eraser;
-  el.tbColor.querySelector('.swatch').style.background = eraser ? 'transparent' : ink.currentColor();
+  el.tbColor.querySelector('.swatch').style.background = eraser ? 'transparent' : shownColor(ink.currentColor());
   const dot = el.tbSize.querySelector('.size-dot');
   const px = [7, 11, 16][ink.currentSize()];
   dot.style.width = dot.style.height = px + 'px';
-  dot.style.background = eraser ? 'transparent' : ink.currentColor();
+  dot.style.background = eraser ? 'transparent' : shownColor(ink.currentColor());
   dot.style.boxShadow = eraser ? 'inset 0 0 0 1.5px var(--text)' : '0 0 0 1px var(--muted)';
   const fd = fingerDraws();
   el.tbFinger.setAttribute('aria-pressed', String(fd));
@@ -1136,7 +1177,7 @@ el.tbColor.addEventListener('click', () => {
   const grid = h('div', { class: 'color-grid' });
   for (const c of colors) {
     grid.append(h('button', {
-      class: 'color-opt', style: `background:${c}`, 'aria-label': `Cor ${c}`,
+      class: 'color-opt', style: `background:${shownColor(c)}`, 'aria-label': `Cor ${c}`,
       'aria-pressed': String(c === ink.currentColor()),
       onclick: () => { ink.setColor(c); saveInkPrefs(); updateToolbar(); closePopover(); },
     }));
@@ -1148,7 +1189,7 @@ el.tbSize.addEventListener('click', () => {
   const row = h('div', { class: 'size-row' });
   const eraser = ink.tool === 'eraser';
   [7, 11, 16].forEach((px, i) => {
-    const dot = h('span', { style: `width:${px}px;height:${px}px;${eraser ? 'background:transparent;box-shadow:inset 0 0 0 1.5px var(--text)' : `background:${ink.currentColor()}`}` });
+    const dot = h('span', { style: `width:${px}px;height:${px}px;${eraser ? 'background:transparent;box-shadow:inset 0 0 0 1.5px var(--text)' : `background:${shownColor(ink.currentColor())}`}` });
     row.append(h('button', {
       class: 'size-opt', 'aria-label': ['Fina', 'Média', 'Grossa'][i], 'aria-pressed': String(i === ink.currentSize()),
       onclick: () => { ink.setSize(i); saveInkPrefs(); updateToolbar(); closePopover(); },

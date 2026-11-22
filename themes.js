@@ -20,6 +20,8 @@
     fingerMode: 'auto', // auto | draw | pan
     penSeen: false,
     onboarded: false,
+    paper: 'auto', // cor da folha dos desenhos
+    lines: 'tema', // cor das linhas (desenhos e texto)
     tips: {},
   };
 
@@ -66,16 +68,64 @@
     return darkQuery.matches ? 'dark' : 'light';
   }
 
+  // Folha dos desenhos: 'auto' segue o modo claro/escuro; as outras são cores fixas
+  const PAPERS = [
+    { id: 'auto', name: 'Automático' },
+    { id: 'branco', name: 'Branco', color: '#ffffff' },
+    { id: 'creme', name: 'Creme', color: '#faf4e4' },
+    { id: 'tom', name: 'Tom do tema' },
+    { id: 'cinza', name: 'Cinza', color: '#e8e8ed' },
+    { id: 'grafite', name: 'Grafite', color: '#2c2c2e' },
+    { id: 'preto', name: 'Preto', color: '#0b0b0c' },
+    { id: 'noite', name: 'Azul-noite', color: '#16213a' },
+    { id: 'lousa', name: 'Verde-lousa', color: '#1e3a2c' },
+  ];
+  const LINES = [
+    { id: 'tema', name: 'Cor do tema' },
+    { id: 'cinza', name: 'Cinza', color: '#8e8e93' },
+    { id: 'azul', name: 'Azul caderno', color: '#4f8fd6' },
+    { id: 'contraste', name: 'Contraste' },
+  ];
+  const isDarkColor = (hex) => luminance(hex) < 0.2;
+
+  function paperColor(t, mode, paperId) {
+    const p = PAPERS.find((x) => x.id === paperId) || PAPERS[0];
+    if (p.color) return p.color;
+    if (p.id === 'tom') return mix(t.accent, '#ffffff', 0.86);
+    return mode === 'dark' ? mix(t.accent, '#1c1c1e', 0.9) : mix(t.accent, '#ffffff', 0.97);
+  }
+
+  function lineBase(t, linesId, paper) {
+    const dark = isDarkColor(paper);
+    const l = LINES.find((x) => x.id === linesId) || LINES[0];
+    if (l.color) return l.color;
+    if (l.id === 'contraste') return dark ? '#ffffff' : '#000000';
+    return dark ? t.accentDark : t.accent;
+  }
+
+  // cores da folha e das linhas (usadas pelos desenhos e pelas prévias)
+  function inkColors(themeId, mode, paperId = settings.paper, linesId = settings.lines) {
+    const t = THEMES.find((x) => x.id === themeId) || THEMES[0];
+    const paper = paperColor(t, mode, paperId);
+    const base = lineBase(t, linesId, paper);
+    const dark = isDarkColor(paper);
+    return {
+      paper,
+      paperDark: dark,
+      line: mix(base, paper, dark ? 0.72 : 0.68),
+      margin: mix(base, paper, dark ? 0.4 : 0.3),
+      lineBase: base,
+    };
+  }
+
   function palette(themeId, mode) {
     const t = THEMES.find((x) => x.id === themeId) || THEMES[0];
     const a = t.accent;
-    // Papel das notas manuscritas: sempre claro (como papel de verdade)
-    const paper = mix(a, '#ffffff', 0.97);
-    const ink = {
-      paper,
-      line: mix(a, '#ffffff', 0.68),
-      margin: mix(a, '#ffffff', 0.3),
-    };
+    const ink = inkColors(themeId, mode);
+    // linhas atrás do texto: mesma escolha, calculada para o fundo do texto (claro ou escuro)
+    const textBase = (accent) => (settings.lines === 'tema' ? accent
+      : settings.lines === 'contraste' ? (mode === 'dark' ? '#ffffff' : '#000000')
+        : ink.lineBase);
     if (mode === 'dark') {
       const accent = t.accentDark;
       const card = mix(a, '#1c1c1e', 0.9);
@@ -91,8 +141,8 @@
         sep: 'rgba(84, 84, 88, 0.6)',
         fill: 'rgba(118, 118, 128, 0.24)',
         bar: rgba(mix(a, '#000000', 0.94), 0.86),
-        textLine: mix(accent, card, 0.78),
-        textMargin: mix(accent, card, 0.45),
+        textLine: mix(textBase(accent), card, 0.78),
+        textMargin: mix(textBase(accent), card, 0.45),
         canvas: mix(a, '#000000', 0.9),
         sheet: rgba(mix(a, '#2c2c2e', 0.92), 0.97),
         ...ink,
@@ -110,8 +160,8 @@
       sep: 'rgba(60, 60, 67, 0.18)',
       fill: rgba(mix(a, '#767680', 0.75), 0.13),
       bar: rgba(mix(a, '#ffffff', 0.93), 0.86),
-      textLine: mix(a, '#ffffff', 0.78),
-      textMargin: mix(a, '#ffffff', 0.4),
+      textLine: mix(textBase(a), '#ffffff', 0.78),
+      textMargin: mix(textBase(a), '#ffffff', 0.4),
       canvas: mix(a, '#e9e9ee', 0.86),
       sheet: rgba(mix(a, '#ffffff', 0.96), 0.97),
       ...ink,
@@ -133,6 +183,7 @@
     };
     for (const k in vars) root.style.setProperty(k, vars[k]);
     root.dataset.mode = mode;
+    root.dataset.paper = p.paperDark ? 'dark' : 'light';
     root.style.colorScheme = mode;
 
     let meta = document.querySelector('meta[name="theme-color"]');
@@ -149,13 +200,17 @@
 
   window.Theme = {
     THEMES,
+    PAPERS,
+    LINES,
+    inkColors,
+    resolvedMode,
     get settings() { return settings; },
     get colors() { return current; },
     palette,
     set(patch) {
       Object.assign(settings, patch);
       save();
-      if ('theme' in patch || 'appearance' in patch) apply();
+      if ('theme' in patch || 'appearance' in patch || 'paper' in patch || 'lines' in patch) apply();
     },
     save,
     apply,

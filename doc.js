@@ -135,7 +135,7 @@
       const colors = this.doc.opts.colors();
       ctx.setTransform(s, 0, 0, s, 0, 0);
       Ink.drawBlock(ctx, this.block, colors, this.scale);
-      if (this.drawing && this.drawing.stroke) Ink.drawStroke(ctx, this.drawing.stroke, true);
+      if (this.drawing && this.drawing.stroke) Ink.drawStroke(ctx, this.drawing.stroke, true, colors.paperDark);
       if (this.drawing && this.drawing.type === 'erase' && this.drawing.cursor) {
         const c = this.drawing.cursor;
         ctx.strokeStyle = colors.accent;

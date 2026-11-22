@@ -187,12 +187,28 @@
     return g;
   }
 
-  function drawStroke(ctx, s, live) {
+  // Tinta que se adapta à folha: preto vira branco na folha escura (e branco vira preto na clara).
+  // A cor guardada não muda; só a cor mostrada.
+  function lum(hex) {
+    const n = parseInt(String(hex).slice(1, 7), 16);
+    if (!Number.isFinite(n)) return 0.5;
+    const ch = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch((n >> 16) & 255) + 0.7152 * ch((n >> 8) & 255) + 0.0722 * ch(n & 255);
+  }
+  function inkColor(c, dark) {
+    const l = lum(c);
+    if (dark && l < 0.06) return '#f2f2f7';
+    if (!dark && l > 0.85) return '#1c1c1e';
+    return c;
+  }
+
+  function drawStroke(ctx, s, live, dark) {
     const g = live ? buildGeom(s) : geomOf(s);
     if (s.t === 'hl') {
       ctx.save();
-      ctx.globalAlpha = 0.38;
-      ctx.globalCompositeOperation = 'multiply';
+      // na folha escura, "multiplicar" sumiria com o marca-texto: usa "clarear"
+      ctx.globalAlpha = dark ? 0.42 : 0.38;
+      ctx.globalCompositeOperation = dark ? 'screen' : 'multiply';
       ctx.strokeStyle = s.c;
       ctx.lineWidth = s.w;
       ctx.lineCap = 'round';
@@ -200,7 +216,7 @@
       ctx.stroke(g.path);
       ctx.restore();
     } else {
-      ctx.fillStyle = s.c;
+      ctx.fillStyle = inkColor(s.c, dark);
       ctx.fill(g.path);
     }
   }
@@ -257,7 +273,7 @@
     ctx.rect(0, 0, PAGE_W, H);
     ctx.clip();
     drawLayout(ctx, block.layout, colors, scale, H);
-    for (const s of block.strokes) drawStroke(ctx, s, false);
+    for (const s of block.strokes) drawStroke(ctx, s, false, colors.paperDark);
     ctx.restore();
   }
 
@@ -446,7 +462,7 @@
         ctx.beginPath();
         ctx.rect(0, 0, PAGE_W, H);
         ctx.clip();
-        drawStroke(ctx, this.drawing.stroke, true);
+        drawStroke(ctx, this.drawing.stroke, true, colors.paperDark);
         ctx.restore();
       }
 
@@ -825,7 +841,7 @@
 
   window.Ink = {
     InkEditor, LAYOUTS, SIZES, PAGE_W, PAGE_H, MIN_H, MAX_H,
-    drawBlock, drawStroke, drawLayout, eraseAt, contentBottom, applyOp, blockH,
+    drawBlock, drawStroke, drawLayout, inkColor, eraseAt, contentBottom, applyOp, blockH,
     renderThumb, renderLayoutPreview,
   };
 })();

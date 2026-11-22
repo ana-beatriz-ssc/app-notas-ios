@@ -205,7 +205,10 @@
       title: 'Temas e aparência',
       html: `
         <p>Em <b>•••</b> → <b>Temas e aparência</b> você escolhe entre Rosa (padrão), Rosa chá, Framboesa, Lavanda, Pêssego, Menta, Céu, Clássico e Grafite.</p>
-        <p>Em <b>Aparência</b>: <b>Automático</b> segue o modo claro/escuro do aparelho, ou fixe em <b>Claro</b> ou <b>Escuro</b>. As folhas manuscritas continuam claras, como papel.</p>`,
+        <p>Em <b>Aparência</b>: <b>Automático</b> segue o modo claro/escuro do aparelho, ou fixe em <b>Claro</b> ou <b>Escuro</b>.</p>
+        <h4>Cor da folha e das linhas</h4>
+        <p>Ali mesmo (ou no ícone de <b>folha</b> dentro da nota) você escolhe a <b>cor da folha dos desenhos</b>: Automático (clara no modo claro, escura no modo escuro), Branco, Creme, Tom do tema, Cinza, Grafite, Preto, Azul-noite ou Verde-lousa. Também escolhe a <b>cor das linhas</b>, que vale para os desenhos e para o texto.</p>
+        <p>Na folha escura, a caneta preta aparece <b>branca</b> (e volta a ser preta se você trocar para uma folha clara). As exportações em PDF e imagem usam a folha escolhida.</p>`,
     },
     {
       id: 'scribble',
